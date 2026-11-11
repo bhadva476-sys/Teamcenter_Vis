@@ -587,6 +587,86 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         native_window.type_keys.assert_not_called()
         wait_for_dialog.assert_called_once_with(native_window)
 
+    def test_open_dialog_falls_back_when_ribbon_command_does_not_open_dialog(self):
+        window = Mock()
+        window.handle = 10
+        window_spec = Mock()
+        native_window = Mock()
+        open_command = Mock()
+        open_command.exists.return_value = True
+        dialog_controls = (Mock(), Mock(), Mock())
+        window_spec.child_window.return_value = open_command
+        desktop = Mock()
+        desktop.window.return_value = window_spec
+
+        with (
+            patch(
+                "app.services.visualization_watcher.Desktop",
+                return_value=desktop,
+            ),
+            patch.object(
+                teamcenter_visualization,
+                "_wait_for_open_dialog",
+                side_effect=(TimeoutError("ribbon missed"), dialog_controls),
+            ) as wait_for_dialog,
+            patch.object(teamcenter_visualization, "_activate_window"),
+            patch.object(teamcenter_visualization, "_select_ribbon_tab"),
+        ):
+            result = teamcenter_visualization._trigger_open_dialog(
+                window,
+                native_window,
+            )
+
+        self.assertEqual(result, dialog_controls)
+        open_command.invoke.assert_called_once_with()
+        native_window.type_keys.assert_called_once_with("^o")
+        self.assertEqual(wait_for_dialog.call_count, 2)
+
+    def test_open_dialog_uses_file_menu_keyboard_fallback(self):
+        window = Mock()
+        window.handle = 10
+        window_spec = Mock()
+        native_window = Mock()
+        open_command = Mock()
+        open_command.exists.return_value = False
+        application_menu = Mock()
+        application_menu.invoke.side_effect = RuntimeError("menu unavailable")
+        dialog_controls = (Mock(), Mock(), Mock())
+        window_spec.child_window.side_effect = lambda **kwargs: (
+            application_menu
+            if kwargs.get("title") == "Application menu"
+            else open_command
+        )
+        desktop = Mock()
+        desktop.window.return_value = window_spec
+
+        with (
+            patch(
+                "app.services.visualization_watcher.Desktop",
+                return_value=desktop,
+            ),
+            patch.object(
+                teamcenter_visualization,
+                "_wait_for_open_dialog",
+                side_effect=(
+                    TimeoutError("shortcut missed"),
+                    dialog_controls,
+                ),
+            ),
+            patch.object(teamcenter_visualization, "_activate_window"),
+            patch.object(teamcenter_visualization, "_select_ribbon_tab"),
+        ):
+            result = teamcenter_visualization._trigger_open_dialog(
+                window,
+                native_window,
+            )
+
+        self.assertEqual(result, dialog_controls)
+        self.assertEqual(
+            [call.args[0] for call in native_window.type_keys.call_args_list],
+            ["^o", "%f", "o"],
+        )
+
     def test_select_ribbon_tab_ignores_workspace_tabs(self):
         ribbon_tab = Mock()
         ribbon_tab.window_text.return_value = "Assembly"

@@ -183,49 +183,66 @@ def _trigger_open_dialog(window, native_window):
     _activate_window(native_window.handle)
 
     window_spec = Desktop(backend="uia").window(handle=window.handle)
-    _select_ribbon_tab(window_spec, "Assembly")
-    open_command = window_spec.child_window(
-        title="Open",
-        control_type="Button",
-    )
+    errors = []
     try:
+        _select_ribbon_tab(window_spec, "Assembly")
+    except Exception as error:
+        errors.append(error)
+
+    try:
+        open_command = window_spec.child_window(
+            title="Open",
+            control_type="Button",
+        )
         ribbon_open_exists = open_command.exists(timeout=2)
-    except Exception:
+    except Exception as error:
+        errors.append(error)
         ribbon_open_exists = False
 
     if ribbon_open_exists:
         try:
-            open_command.invoke()
-        except Exception:
             try:
-                open_command.click_input()
+                open_command.invoke()
             except Exception:
-                ribbon_open_exists = False
-        if ribbon_open_exists:
+                open_command.click_input()
             return _wait_for_open_dialog(native_window)
-
-    native_window.type_keys("^o")
-    try:
-        return _wait_for_open_dialog(native_window, timeout=5)
-    except TimeoutError:
-        try:
-            application_menu = window_spec.child_window(
-                title="Application menu",
-                control_type="Button",
-            )
-            application_menu.invoke()
-            open_command = window_spec.child_window(
-                title_re=r"Open\.\.\..*",
-                control_type="MenuItem",
-            )
-            open_command.wait("visible", timeout=3)
-            open_command.invoke()
         except Exception as error:
-            raise TimeoutError(
-                "Could not open Teamcenter Visualization's File > Open dialog "
-                "using the ribbon, Ctrl+O, or the application menu."
-            ) from error
+            errors.append(error)
+
+    try:
+        native_window.type_keys("^o")
+        return _wait_for_open_dialog(native_window, timeout=5)
+    except Exception as error:
+        errors.append(error)
+
+    try:
+        application_menu = window_spec.child_window(
+            title="Application menu",
+            control_type="Button",
+        )
+        application_menu.invoke()
+        open_command = window_spec.child_window(
+            title_re=r"Open(?:\.\.\.)?.*",
+            control_type="MenuItem",
+        )
+        open_command.wait("visible", timeout=3)
+        open_command.invoke()
         return _wait_for_open_dialog(native_window)
+    except Exception as error:
+        errors.append(error)
+
+    try:
+        native_window.type_keys("%f")
+        native_window.type_keys("o")
+        return _wait_for_open_dialog(native_window)
+    except Exception as error:
+        errors.append(error)
+
+    raise TimeoutError(
+        "Could not open Teamcenter Visualization's File > Open dialog "
+        "using the ribbon, Ctrl+O, the application menu, or Alt+F then O. "
+        f"Last error: {errors[-1]}"
+    ) from errors[-1]
 
 
 def _wait_for_insert_dialog(main_window, timeout=15):
