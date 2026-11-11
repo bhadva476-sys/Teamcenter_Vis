@@ -9,6 +9,32 @@ CONVERTER_VERSION = "aspose-pbr-v1"
 MIMETYPES = {"glb": "model/gltf-binary", "gltf": "model/gltf+json", "zip": "application/zip"}
 
 
+class NoPreviewDataError(Exception):
+    """The JT file has no usable geometry for a browser preview."""
+
+
+def check_preview_geometry(scene):
+    """Raise when a JT scene has no renderable mesh geometry."""
+    mesh_count = 0
+
+    def walk(node):
+        nonlocal mesh_count
+        entity = node.entity
+        if entity is not None and hasattr(entity, "control_points"):
+            vertices = len(entity.control_points)
+            polygons = getattr(entity, "polygon_count", 0)
+            if vertices > 0 and polygons > 0:
+                mesh_count += 1
+        for child in node.child_nodes:
+            walk(child)
+
+    walk(scene.root_node)
+    if mesh_count == 0:
+        raise NoPreviewDataError(
+            "This JT file does not contain usable 3D geometry."
+        )
+
+
 def load_aspose():
     """Return (module, None) or (None, readable error). Imported lazily so /health can report problems."""
     try:
@@ -40,6 +66,7 @@ def convert_jt(src: Path, dst: Path) -> dict:
         raise RuntimeError(f"Aspose.3D could not be loaded ({err})")
 
     scene = a3d.Scene.from_file(str(src))
+    check_preview_geometry(scene)
     stats = {"nodes": 0, "with_material": 0, "converted": 0}
 
     def walk(node):

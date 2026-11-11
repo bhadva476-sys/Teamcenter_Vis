@@ -25,7 +25,7 @@ from app.services.database import DatabaseStartupError, verify_database_connecti
 #         # Automatically launch the web dashboard link in the default browser
 #         os.system(f"start http://{HOST}:{PORT}/")
         
-#         # Optional: Use pywinauto to find your browser/app window and snap it over JT2Go
+#         # Optional: Use pywinauto to find your browser/app window and snap it over Teamcenter Visualization
 #         from pywinauto import Application
 #         app_win = Application(backend="win32").connect(title_re=".*JT Studio.*")
 #         app_win.top_window().set_focus()

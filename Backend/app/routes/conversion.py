@@ -10,7 +10,13 @@ from pathlib import Path
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
-from ..services.conversion import MIMETYPES, convert_jt, file_digest, load_aspose
+from ..services.conversion import (
+    MIMETYPES,
+    NoPreviewDataError,
+    convert_jt,
+    file_digest,
+    load_aspose,
+)
 from ..services.jt_probe import probe_jt
 from ..utils.uploads import check_upload
 
@@ -145,6 +151,11 @@ def upload():
     try:
         convert_jt(source, temporary)
         os.replace(temporary, destination)
+    except NoPreviewDataError:
+        return jsonify(
+            preview_available=False,
+            message="No preview data is available for this JT file.",
+        )
     except Exception as error:
         current_app.logger.exception("Conversion failed")
         return jsonify(error=f"Conversion failed: {error}"), 500

@@ -23,6 +23,7 @@ class FakeCursor:
             {"Field": "createdat", "Key": "", "Extra": ""},
             {"Field": "updatedat", "Key": "", "Extra": ""},
             {"Field": "attribute_owner", "Key": "", "Extra": ""},
+            {"Field": "Thumbnail_Location", "Key": "", "Extra": ""},
         ]
 
     def execute(self, query, params=None):
@@ -61,12 +62,15 @@ class JTFileUploadTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = Path(__file__).parent / "temp" / uuid4().hex
         self.upload_dir = self.temp_dir / "ServerUploads"
+        self.thumbnail_dir = self.temp_dir / "ServerThumbnails" / "dev"
         self.app = create_app(
             {
                 "TESTING": True,
                 "UPLOADS_DIR": self.temp_dir / "uploads",
                 "CONVERTED_DIR": self.temp_dir / "converted",
                 "SERVER_UPLOADS_DIR": self.upload_dir,
+                "SERVER_THUMBNAILS_DIR": self.thumbnail_dir,
+                "MAX_THUMBNAIL_SIZE": 1024,
                 "MAX_JT_FILE_SIZE": 4,
                 "MAX_CONTENT_LENGTH": 1024 * 1024,
                 "DB_HOST": "localhost",
@@ -82,10 +86,19 @@ class JTFileUploadTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def upload(self, content=b"JT!!", filename="assembly.jt"):
+    def upload(
+        self, content=b"JT!!", filename="assembly.jt", thumbnail=None,
+        preview_available=None
+    ):
+        data = {"file": (BytesIO(content), filename)}
+        if preview_available is not None:
+            data["preview_available"] = str(preview_available).lower()
+        if thumbnail is not None:
+            thumbnail_content, thumbnail_filename = thumbnail
+            data["thumbnail"] = (BytesIO(thumbnail_content), thumbnail_filename)
         return self.client.post(
             "/api/jt-files/upload",
-            data={"file": (BytesIO(content), filename)},
+            data=data,
             content_type="multipart/form-data",
         )
 
@@ -112,13 +125,14 @@ class JTFileUploadTests(unittest.TestCase):
             for item in connection.fake_cursor.executed
             if item[0].lstrip().startswith("INSERT")
         )
-        filename, file_type, file_location, size, owner = insert[1]
+        filename, file_type, file_location, size, owner, thumbnail_location = insert[1]
         saved_file = Path(file_location)
         self.assertEqual(
             (filename, file_type, size, owner),
             ("assembly.jt", ".jt", 4, "local-user"),
         )
         self.assertEqual(saved_file.read_bytes(), b"JT!!")
+        self.assertIsNone(thumbnail_location)
         self.assertTrue(
             any(
                 "CREATE TABLE IF NOT EXISTS `jtweb_client_test`" in query
@@ -227,7 +241,7 @@ class JTFileUploadTests(unittest.TestCase):
             for item in connection.fake_cursor.executed
             if item[0].lstrip().startswith("INSERT")
         )
-        self.assertIn("VALUES (%s, %s, %s, %s, %s)", insert_query)
+        self.assertIn("VALUES (%s, %s, %s, %s, %s, %s)", insert_query)
         self.assertEqual(parameters[0], "model'; DROP TABLE jtweb_client;--.jt")
 
     def test_existing_table_is_migrated_additively(self):
@@ -249,9 +263,51 @@ class JTFileUploadTests(unittest.TestCase):
             for query, _ in connection.fake_cursor.executed
             if query.startswith("ALTER TABLE")
         ]
-        self.assertEqual(len(alterations), 6)
+        self.assertEqual(len(alterations), 7)
         self.assertTrue(all("ADD COLUMN" in query for query in alterations))
         self.assertFalse(any("DROP" in query for query, _ in connection.fake_cursor.executed))
+        response.close()
+
+    def test_previewed_upload_requires_thumbnail(self):
+        response = self.upload(preview_available=True)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Choose a thumbnail", response.json["error"])
+        self.assertFalse(self.upload_dir.exists() and any(self.upload_dir.iterdir()))
+        response.close()
+
+    def test_thumbnail_is_saved_and_registered_in_mysql(self):
+        connection = FakeConnection()
+        with patch(
+            "app.services.jt_file_uploads._connect_to_database",
+            return_value=connection,
+        ):
+            response = self.upload(
+                preview_available=True,
+                thumbnail=(b"\x89PNG\r\n\x1a\nimage", "preview.png"),
+            )
+
+        self.assertEqual(response.status_code, 201)
+        insert_query, parameters = next(
+            item
+            for item in connection.fake_cursor.executed
+            if item[0].lstrip().startswith("INSERT")
+        )
+        self.assertIn("`Thumbnail_Location`", insert_query)
+        thumbnail_path = Path(parameters[5])
+        self.assertEqual(thumbnail_path.parent, self.thumbnail_dir)
+        self.assertEqual(thumbnail_path.read_bytes(), b"\x89PNG\r\n\x1a\nimage")
+        response.close()
+
+    def test_invalid_thumbnail_is_rejected_without_leaving_jt_file(self):
+        response = self.upload(
+            preview_available=True,
+            thumbnail=(b"not an image", "preview.png"),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("valid PNG", response.json["error"])
+        self.assertFalse(self.upload_dir.exists() and any(self.upload_dir.iterdir()))
         response.close()
 
     def test_unsafe_configured_table_name_is_rejected(self):

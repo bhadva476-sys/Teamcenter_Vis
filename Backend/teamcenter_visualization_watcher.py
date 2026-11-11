@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from app.services import jt2go
+from app.services import teamcenter_visualization
 
 # Single-instance guard: a second watcher exits immediately
 _lock = socket.socket()
@@ -15,13 +15,13 @@ except OSError:
     print("Watcher already running.")
     sys.exit(0)
 
-BUSY_FLAG = Path(tempfile.gettempdir()) / "jt2go_busy.flag"  # set by jt2go.py during Add-button automation
+BUSY_FLAG = Path(tempfile.gettempdir()) / "teamcenter_visualization_busy.flag"
 APP_TITLE = "JT Viewer"
 INSERT_TITLES = {"insert file", "insert"}   # "open" removed: your Add flow no longer uses it
-CLOSE_JT2GO_DIALOG = True  # set to False for debugging the JT2Go dialog without closing it automatically
+CLOSE_VISUALIZATION_DIALOG = True
 
 
-def find_app_window():
+def find_viewer_window():
     from pywinauto import Desktop
     for w in Desktop(backend="uia").windows():
         try:
@@ -143,7 +143,7 @@ def force_foreground(hwnd):
 APP_EXE = Path(r"C:\Project\new\Backend\dist\JTViewer\JTViewer.exe")
 
 def launch_or_focus():
-    win = find_app_window()
+    win = find_viewer_window()
     if win is None:
         print("Launching JT Viewer...")
         log = open(r"C:\Project\new\Backend\desktop_app.log", "ab")
@@ -156,7 +156,7 @@ def launch_or_focus():
         deadline = time.monotonic() + 20
         while win is None and time.monotonic() < deadline:
             time.sleep(0.3)
-            win = find_app_window()
+            win = find_viewer_window()
     if win is not None:
         try:
             force_foreground(win.handle)
@@ -215,17 +215,17 @@ def close_popup(handle):
 
 
 def watch(interval=0.5):
-    print("Watching JT2Go... (Ctrl+C to stop)")
+    print("Watching Teamcenter Visualization... (Ctrl+C to stop)")
     last_handle = None
     while True:
         try:
-            window = jt2go.find_jt2go_window()
-            popup = jt2go._active_popup(window) if window else None
+            window = teamcenter_visualization.find_visualization_window()
+            popup = teamcenter_visualization.active_popup(window) if window else None
             handle = popup[0] if popup else None
             if popup and handle != last_handle:
                 title = popup[2].strip().lower()
                 if title and title != "project workspace":
-                    print(f"JT2Go dialog appearedwwdwd: {popup[2]!r}")
+                    print(f"Teamcenter Visualization dialog appeared: {popup[2]!r}")
                 if title in INSERT_TITLES and not BUSY_FLAG.exists():
                     print("Insert detected, opening JT Viewer...")
                     last_handle = handle
@@ -233,13 +233,13 @@ def watch(interval=0.5):
                         launch_or_focus()
                     except Exception as error:
                         print("launch failed:", error)
-                    if CLOSE_JT2GO_DIALOG:
+                    if CLOSE_VISUALIZATION_DIALOG:
                         try:
                             close_popup(handle)
                         except Exception as error:
                             print("close failed:", error)
                     try:
-                        w = find_app_window()
+                        w = find_viewer_window()
                         if w is not None:
                             force_foreground(w.handle)
                     except Exception as error:

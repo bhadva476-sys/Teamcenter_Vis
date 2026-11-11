@@ -6,6 +6,7 @@ from uuid import uuid4
 from unittest.mock import patch
 
 from app import create_app
+from app.services.conversion import NoPreviewDataError
 
 
 class RouteTests(unittest.TestCase):
@@ -17,6 +18,7 @@ class RouteTests(unittest.TestCase):
                 "UPLOADS_DIR": self.temp_dir / "uploads",
                 "CONVERTED_DIR": self.temp_dir / "converted",
                 "SERVER_UPLOADS_DIR": self.temp_dir / "server_uploads",
+                "SERVER_THUMBNAILS_DIR": self.temp_dir / "server_thumbnails",
             }
         )
         self.client = self.app.test_client()
@@ -27,7 +29,13 @@ class RouteTests(unittest.TestCase):
     def test_factory_registers_blueprints(self):
         self.assertEqual(
             set(self.app.blueprints),
-            {"main", "conversion", "jt2go", "jt_files", "jt_file_list"},
+            {
+                "main",
+                "conversion",
+                "teamcenter_visualization",
+                "jt_files",
+                "jt_file_list",
+            },
         )
 
     def test_homepage_serves_frontend(self):
@@ -60,12 +68,14 @@ class RouteTests(unittest.TestCase):
         upload = self.client.get("/static/pages/upload/UploadPage.html")
         self.assertIn(b"Model preview", upload.data)
         self.assertIn(b"Download original .jt", upload.data)
+        self.assertIn(b'id="thumbnailFile"', upload.data)
         upload.close()
 
         files = self.client.get("/static/pages/files/FilesPage.html")
         self.assertIn(b'id="fileSearch"', files.data)
         self.assertIn(b'id="uploadedFilesTitle">All Files', files.data)
-        self.assertIn(b'id="jt2goActionHeader"', files.data)
+        self.assertIn(b'id="teamcenterVisualizationActionHeader"', files.data)
+        self.assertIn(b">Thumbnail</th>", files.data)
         files.close()
 
         viewer = self.client.get("/static/js/pages/upload/ModelViewer.js")
@@ -95,6 +105,34 @@ class RouteTests(unittest.TestCase):
         self.assertTrue(response.headers["Content-Disposition"].startswith("attachment;"))
         response.close()
 
+    def test_registered_thumbnail_is_served_from_thumbnail_directory(self):
+        thumbnail = self.temp_dir / "server_thumbnails" / "preview.png"
+        thumbnail.write_bytes(b"\x89PNG\r\n\x1a\nimage")
+
+        with patch(
+            "app.routes.jt_files.get_local_jt_thumbnail_path",
+            return_value=thumbnail,
+        ):
+            response = self.client.get("/api/jt-files/12/thumbnail")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/png")
+        self.assertEqual(response.data, b"\x89PNG\r\n\x1a\nimage")
+        response.close()
+
+    def test_thumbnail_outside_configured_directory_is_not_served(self):
+        outside_thumbnail = self.temp_dir / "outside.png"
+        outside_thumbnail.write_bytes(b"\x89PNG\r\n\x1a\nimage")
+
+        with patch(
+            "app.routes.jt_files.get_local_jt_thumbnail_path",
+            return_value=outside_thumbnail,
+        ):
+            response = self.client.get("/api/jt-files/12/thumbnail")
+
+        self.assertEqual(response.status_code, 404)
+        response.close()
+
     def test_existing_preview_upload_route_keeps_its_response_shape(self):
         def create_glb(source, destination):
             destination.write_bytes(b"mock GLB")
@@ -114,4 +152,22 @@ class RouteTests(unittest.TestCase):
             response.json,
             {"url": f"/models/{'a' * 64}.glb", "cached": False},
         )
+        response.close()
+
+    def test_preview_upload_reports_missing_preview_data_without_an_error(self):
+        with (
+            patch("app.routes.conversion.file_digest", return_value="b" * 64),
+            patch(
+                "app.routes.conversion.convert_jt",
+                side_effect=NoPreviewDataError("No usable geometry"),
+            ),
+        ):
+            response = self.client.post(
+                "/upload",
+                data={"file": (BytesIO(b"valid JT test bytes"), "model.jt")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["preview_available"], False)
         response.close()

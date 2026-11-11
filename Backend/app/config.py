@@ -33,10 +33,16 @@ CONVERTED_DIR = _configured_path("JT_CONVERTED_DIR", APP_DIR / "converted")
 SERVER_UPLOADS_DIR = _configured_path(
     "JT_SERVER_UPLOADS_DIR", BACKEND_DIR / "ServerUploads" / APP_ENV
 )
+SERVER_THUMBNAILS_DIR = _configured_path(
+    "JT_SERVER_THUMBNAILS_DIR", BACKEND_DIR / "ServerThumbnails" / APP_ENV
+)
 MAX_CONTENT_LENGTH = int(
     os.environ.get("MAX_CONTENT_LENGTH", str(200 * 1024 * 1024))
 )
 MAX_JT_FILE_SIZE = MAX_CONTENT_LENGTH
+MAX_THUMBNAIL_SIZE = int(
+    os.environ.get("MAX_THUMBNAIL_SIZE", str(5 * 1024 * 1024))
+)
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "5000"))
 DB_HOST = os.environ.get("DB_HOST", "localhost")

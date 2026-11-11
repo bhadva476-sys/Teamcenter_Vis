@@ -3,7 +3,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 from app import create_app
-from app.services.jt_file_uploads import get_local_jt_file_path
+from app.services.jt_file_uploads import (
+    get_local_jt_file_path,
+    get_local_jt_thumbnail_path,
+)
 
 
 class JTFileListTests(unittest.TestCase):
@@ -16,10 +19,11 @@ class JTFileListTests(unittest.TestCase):
         )
         self.client = self.app.test_client()
 
-    def test_list_returns_database_metadata_with_server_path(self):
+    def test_list_returns_thumbnail_url_without_exposing_server_paths(self):
         cursor = Mock()
-        cursor.fetchall.return_value = [
-            {
+        cursor.fetchall.side_effect = [
+            [{"Field": "Name"}],
+            [{
                 "id": 12,
                 "Name": "assembly.jt",
                 "type": ".jt",
@@ -27,8 +31,8 @@ class JTFileListTests(unittest.TestCase):
                 "createdat": datetime(2026, 10, 23, 12, 0, 0),
                 "updatedat": datetime(2026, 10, 23, 12, 5, 0),
                 "attribute_owner": "local-user",
-                "file_location": "must-not-be-returned",
-            }
+                "Thumbnail_Location": "C:/ServerThumbnails/dev/preview.png",
+            }],
         ]
         connection = Mock()
         connection.cursor.return_value = cursor
@@ -49,23 +53,30 @@ class JTFileListTests(unittest.TestCase):
                         "id": 12,
                         "filename": "assembly.jt",
                         "type": ".jt",
-                        "file_location": "must-not-be-returned",
                         "size": 4096,
                         "createdat": "2026-10-23T12:00:00",
                         "updatedat": "2026-10-23T12:05:00",
                         "attribute_owner": "local-user",
+                        "thumbnail_url": "/api/jt-files/12/thumbnail",
                     }
                 ],
             },
         )
-        self.assertIn(b"must-not-be-returned", response.data)
-        cursor.execute.assert_called_once()
-        query, params = cursor.execute.call_args.args
+        self.assertNotIn(b"must-not-be-returned", response.data)
+        query, params = cursor.execute.call_args_list[-1].args
         self.assertIn("FROM `jtweb_client`", query)
-        self.assertIn("`file_location`", query)
+        self.assertIn("`Thumbnail_Location`", query)
         self.assertIn("ORDER BY `id` DESC", query)
         self.assertIn("LIMIT %s", query)
         self.assertEqual(params, (100,))
+        self.assertTrue(
+            any(
+                call.args[0].startswith(
+                    "ALTER TABLE `jtweb_client` ADD COLUMN `Thumbnail_Location`"
+                )
+                for call in cursor.execute.call_args_list
+            )
+        )
         cursor.close.assert_called_once_with()
         connection.close.assert_called_once_with()
         response.close()
@@ -116,3 +127,24 @@ class JTFileListTests(unittest.TestCase):
         self.assertEqual(params, (12, "local-user"))
         cursor.close.assert_called_once_with()
         connection.close.assert_called_once_with()
+
+    def test_thumbnail_path_lookup_is_limited_to_local_owner(self):
+        cursor = Mock()
+        cursor.fetchone.return_value = {
+            "Thumbnail_Location": "C:/ServerThumbnails/dev/preview.png"
+        }
+        connection = Mock()
+        connection.cursor.return_value = cursor
+
+        with patch(
+            "app.services.jt_file_uploads._connect_to_database",
+            return_value=connection,
+        ):
+            with self.app.app_context():
+                path = get_local_jt_thumbnail_path(12)
+
+        self.assertEqual(path, "C:/ServerThumbnails/dev/preview.png")
+        query, params = cursor.execute.call_args.args
+        self.assertIn("`Thumbnail_Location`", query)
+        self.assertIn("`attribute_owner` = %s", query)
+        self.assertEqual(params, (12, "local-user"))

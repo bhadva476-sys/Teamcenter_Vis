@@ -16,7 +16,7 @@ export function fetchUploadedFiles() {
 }
 
 export function openRegisteredFile(fileId) {
-  return requestJson(`/api/jt-files/${encodeURIComponent(fileId)}/open-in-jt2go`, {
+  return requestJson(`/api/jt-files/${encodeURIComponent(fileId)}/open-in-teamcenter-visualization`, {
     method: 'POST',
     headers: { Accept: 'application/json' }
   });
@@ -56,14 +56,16 @@ export function convertJTFile(file) {
   return requestJson('/upload', { method: 'POST', body: form });
 }
 
-export function registerJTFile(file) {
+export function registerJTFile(file, { thumbnail, previewAvailable = false } = {}) {
   const form = new FormData();
   form.append('file', file);
+  form.append('preview_available', String(previewAvailable));
+  if (thumbnail) form.append('thumbnail', thumbnail);
   return requestJson('/api/jt-files/upload', { method: 'POST', body: form });
 }
 
-export function addJTFileToJT2Go(file) {
+export function addJTFileToTeamcenterVisualization(file) {
   const form = new FormData();
   form.append('file', file);
-  return requestJson('/add-to-jt2go', { method: 'POST', body: form });
+  return requestJson('/add-to-teamcenter-visualization', { method: 'POST', body: form });
 }

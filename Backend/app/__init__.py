@@ -15,14 +15,16 @@ from .config import (
     JT_WEBCLIENT_TABLE,
     MAX_CONTENT_LENGTH,
     MAX_JT_FILE_SIZE,
+    MAX_THUMBNAIL_SIZE,
     SERVER_UPLOADS_DIR,
+    SERVER_THUMBNAILS_DIR,
     UPLOADS_DIR,
 )
 
 from .routes.conversion import conversion_bp
-from .routes.jt2go import jt2go_bp
 from .routes.jt_files import jt_file_list_bp, jt_files_bp
 from .routes.main import main_bp
+from .routes.teamcenter_visualization import teamcenter_visualization_bp
 from .utils.errors import register_error_handlers
 
 
@@ -34,6 +36,8 @@ def create_app(test_config=None):
         UPLOADS_DIR=UPLOADS_DIR,
         CONVERTED_DIR=CONVERTED_DIR,
         SERVER_UPLOADS_DIR=SERVER_UPLOADS_DIR,
+        SERVER_THUMBNAILS_DIR=SERVER_THUMBNAILS_DIR,
+        MAX_THUMBNAIL_SIZE=MAX_THUMBNAIL_SIZE,
         DB_HOST=DB_HOST,
         DB_PORT=DB_PORT,
         DB_USER=DB_USER,
@@ -44,7 +48,12 @@ def create_app(test_config=None):
     if test_config is not None:
         app.config.update(test_config)
 
-    for key in ("UPLOADS_DIR", "CONVERTED_DIR", "SERVER_UPLOADS_DIR"):
+    for key in (
+        "UPLOADS_DIR",
+        "CONVERTED_DIR",
+        "SERVER_UPLOADS_DIR",
+        "SERVER_THUMBNAILS_DIR",
+    ):
         directory = Path(app.config[key])
         directory.mkdir(parents=True, exist_ok=True)
         app.config[key] = directory
@@ -52,7 +61,7 @@ def create_app(test_config=None):
     register_error_handlers(app)
     app.register_blueprint(main_bp)
     app.register_blueprint(conversion_bp)
-    app.register_blueprint(jt2go_bp)
+    app.register_blueprint(teamcenter_visualization_bp)
     app.register_blueprint(jt_files_bp)
     app.register_blueprint(jt_file_list_bp)
 
