@@ -3,10 +3,30 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from app.services import teamcenter_visualization
+from app.services import visualization_watcher as teamcenter_visualization
 
 
 class TeamcenterVisualizationTests(unittest.TestCase):
+    def test_open_jt_model_detection_accepts_titles_with_suffix_text(self):
+        window = Mock()
+        window.window_text.return_value = (
+            "model.jt - Teamcenter Visualization"
+        )
+        window.descendants.return_value = []
+
+        self.assertTrue(teamcenter_visualization._has_open_jt_model(window))
+
+    def test_open_jt_model_detection_checks_document_tabs(self):
+        window = Mock()
+        window.window_text.return_value = "Teamcenter Visualization"
+        document_tab = Mock()
+        document_tab.window_text.return_value = "assembly.jt"
+        window.descendants.side_effect = lambda control_type: (
+            [document_tab] if control_type == "TabItem" else []
+        )
+
+        self.assertTrue(teamcenter_visualization._has_open_jt_model(window))
+
     def test_find_window_prefers_active_visualization_window(self):
         blank_window = Mock()
         blank_window.window_text.return_value = "Teamcenter Visualization"
@@ -20,7 +40,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         desktop.windows.return_value = [blank_window, document_window]
 
         with patch(
-            "app.services.teamcenter_visualization.Desktop",
+            "app.services.visualization_watcher.Desktop",
             return_value=desktop,
         ):
             window = teamcenter_visualization.find_visualization_window()
@@ -40,7 +60,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         desktop.windows.return_value = [blank_window, document_window]
 
         with patch(
-            "app.services.teamcenter_visualization.Desktop",
+            "app.services.visualization_watcher.Desktop",
             return_value=desktop,
         ):
             window = teamcenter_visualization.find_visualization_window()
@@ -60,14 +80,6 @@ class TeamcenterVisualizationTests(unittest.TestCase):
             filename = Mock()
             open_button = Mock()
             file_item = Mock()
-            file_item.text.return_value = jt_file.name
-            file_list = Mock()
-            file_list.items.return_value = [file_item]
-            dialog.child_window.return_value = file_list
-            directory_control = Mock()
-            directory_control.element_info.control_id = 1003
-            directory_control.element_info.class_name = "ComboBox"
-            dialog.descendants.return_value = [directory_control]
             uia_desktop = Mock()
             uia_desktop.window.return_value = window
             win32_desktop = Mock()
@@ -79,7 +91,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                     return_value=window,
                 ),
                 patch(
-                    "app.services.teamcenter_visualization.Desktop",
+                    "app.services.visualization_watcher.Desktop",
                     side_effect=lambda backend: (
                         uia_desktop if backend == "uia" else win32_desktop
                     ),
@@ -92,28 +104,26 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                 ),
                 patch.object(
                     teamcenter_visualization,
-                    "_wait_for_open_dialog",
+                    "_trigger_open_dialog",
                     return_value=(dialog, filename, open_button),
-                ),
+                ) as trigger_open,
                 patch.object(
                     teamcenter_visualization,
-                    "_selected_folder_name",
-                    return_value=jt_file.parent.name,
-                ),
+                    "_navigate_to_file",
+                    return_value=file_item,
+                ) as navigate,
             ):
                 result = teamcenter_visualization.open_file_in_visualization(
                     jt_file
                 )
 
         self.assertTrue(result)
-        filename.set_edit_text.assert_called_once_with(
-            str(jt_file.resolve().parent)
-        )
-        filename.set_focus.assert_called_once_with()
-        filename.type_keys.assert_called_once_with("{ENTER}")
-        file_item.click.assert_called_once_with()
+        trigger_open.assert_called_once_with(window, native_window)
+        navigate.assert_called_once_with(dialog, jt_file, 15)
+        file_item.click_input.assert_called_once_with()
         open_button.wait.assert_called_once_with("enabled", timeout=2)
         open_button.click.assert_called_once_with()
+        dialog.wait_not.assert_called_once_with("visible", timeout=15)
 
     def test_open_inserts_file_into_existing_jt_model(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -133,7 +143,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                     return_value=window,
                 ),
                 patch(
-                    "app.services.teamcenter_visualization.Desktop",
+                    "app.services.visualization_watcher.Desktop",
                     return_value=Mock(
                         **{"window.return_value": native_window}
                     ),
@@ -161,7 +171,6 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         trigger_insert.assert_called_once_with(window, native_window)
         submit_file.assert_called_once_with(
             dialog,
-            filename,
             insert_button,
             jt_file,
         )
@@ -184,7 +193,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                     return_value=window,
                 ),
                 patch(
-                    "app.services.teamcenter_visualization.Desktop",
+                    "app.services.visualization_watcher.Desktop",
                     return_value=Mock(
                         **{"window.return_value": native_window}
                     ),
@@ -217,7 +226,6 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         trigger_open.assert_called_once_with(window, native_window)
         submit_path.assert_called_once_with(
             dialog,
-            filename,
             open_button,
             jt_file,
         )
@@ -240,24 +248,81 @@ class TeamcenterVisualizationTests(unittest.TestCase):
 
         with patch.object(
             teamcenter_visualization,
-            "_selected_folder_name",
-            side_effect=["dev", "session"],
-        ):
+            "_navigate_to_file",
+            return_value=file_item,
+        ) as navigate:
             teamcenter_visualization._navigate_and_submit_file(
                 dialog,
-                filename,
                 submit_button,
                 target,
-                timeout=1,
             )
 
-        filename.set_edit_text.assert_called_once_with(str(target.resolve().parent))
-        filename.set_focus.assert_called_once_with()
-        filename.type_keys.assert_called_once_with("{ENTER}")
-        file_item.click.assert_called_once_with()
+        navigate.assert_called_once_with(dialog, target, 15)
+        file_item.click_input.assert_called_once_with()
         submit_button.wait.assert_called_once_with("enabled", timeout=2)
         submit_button.click.assert_called_once_with()
         dialog.wait_not.assert_called_once_with("visible", timeout=15)
+
+    def test_file_picker_browses_the_complete_target_folder(self):
+        target = Path(
+            "C:/Project_Visualization/new/Backend/ServerUploads/dev/model.jt"
+        )
+        dialog = Mock()
+        my_computer = Mock()
+        filename_edit = Mock()
+        open_button = Mock()
+        list_view = Mock()
+        list_view.item_count.return_value = 0
+        controls = {
+            1006: list_view,
+            3070: my_computer,
+            3078: filename_edit,
+            1: open_button,
+        }
+        dialog.child_window.side_effect = lambda control_id: controls[control_id]
+        items = [Mock() for _ in range(6)]
+
+        with patch.object(
+            teamcenter_visualization,
+            "_wait_for_list_item",
+            side_effect=items,
+        ) as wait_for_item:
+            result = teamcenter_visualization._navigate_to_file(
+                dialog,
+                target,
+                timeout=15,
+            )
+        self.assertIs(result, items[-1])
+        my_computer.click.assert_called_once_with()
+        my_computer.click.assert_called_once_with()
+        filename_edit.set_edit_text.assert_any_call("C:\\")
+        for folder_name in target.parent.parts[1:]:
+            filename_edit.set_edit_text.assert_any_call(folder_name + "\\")
+        self.assertEqual(open_button.click.call_count, 6)
+        self.assertEqual(wait_for_item.call_count, 6)
+        wait_for_item.assert_any_call(
+            list_view,
+            "Project_Visualization",
+            15,
+        )
+        wait_for_item.assert_called_with(list_view, target.name, 15)
+
+    def test_wait_for_file_list_item_uses_native_win32_list_view(self):
+        list_view = Mock()
+        drive = Mock()
+        drive.text.return_value = "C: ()"
+        folder = Mock()
+        folder.text.return_value = "Project_Visualization"
+        list_view.item_count.return_value = 2
+        list_view.get_item.side_effect = [drive, folder, drive, folder]
+
+        result = teamcenter_visualization._wait_for_list_item(
+            list_view,
+            "Project_Visualization",
+            timeout=1,
+        )
+
+        self.assertIs(result, folder)
 
     def test_insert_dialog_uses_reference_shortcut(self):
         window = Mock()
@@ -304,7 +369,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         desktop.window.return_value = dialog
 
         with patch(
-            "app.services.teamcenter_visualization.Desktop",
+            "app.services.visualization_watcher.Desktop",
             return_value=desktop,
         ):
             result = teamcenter_visualization._wait_for_insert_dialog(
@@ -324,10 +389,10 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                 "find_visualization_window",
                 return_value=None,
             ), patch(
-                "app.services.teamcenter_visualization.time.monotonic",
+                "app.services.visualization_watcher.time.monotonic",
                 side_effect=(0, 100),
             ), patch(
-                "app.services.teamcenter_visualization.os.startfile",
+                "app.services.visualization_watcher.os.startfile",
                 create=True,
             ):
                 with self.assertRaisesRegex(
@@ -368,7 +433,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                     side_effect=(None, window),
                 ),
                 patch(
-                    "app.services.teamcenter_visualization.Desktop",
+                    "app.services.visualization_watcher.Desktop",
                     side_effect=lambda backend: (
                         uia_desktop if backend == "uia" else win32_desktop
                     ),
@@ -384,10 +449,10 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                     "_navigate_and_submit_file",
                 ) as submit_file,
                 patch(
-                    "app.services.teamcenter_visualization.os.startfile",
+                    "app.services.visualization_watcher.os.startfile",
                     create=True,
                 ) as startfile,
-                patch("app.services.teamcenter_visualization.time.sleep"),
+                patch("app.services.visualization_watcher.time.sleep"),
             ):
                 result = teamcenter_visualization.open_file_in_visualization(
                     jt_file
@@ -398,7 +463,6 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         trigger_open.assert_called_once_with(window, native_window)
         submit_file.assert_called_once_with(
             dialog,
-            filename,
             open_button,
             jt_file,
         )
@@ -425,7 +489,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         desktop.window.return_value = dialog
 
         with patch(
-            "app.services.teamcenter_visualization.Desktop",
+            "app.services.visualization_watcher.Desktop",
             return_value=desktop,
         ):
             found_dialog, found_filename, found_button = (
@@ -459,7 +523,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
 
         with (
             patch(
-                "app.services.teamcenter_visualization.Desktop",
+                "app.services.visualization_watcher.Desktop",
                 return_value=desktop,
             ),
             patch.object(
@@ -471,7 +535,8 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                 ),
             ),
             patch.object(teamcenter_visualization, "_activate_window"),
-            patch("app.services.teamcenter_visualization.time.sleep"),
+            patch.object(teamcenter_visualization, "_select_ribbon_tab"),
+            patch("app.services.visualization_watcher.time.sleep"),
         ):
             result = teamcenter_visualization._trigger_open_dialog(
                 window,
@@ -497,7 +562,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
 
         with (
             patch(
-                "app.services.teamcenter_visualization.Desktop",
+                "app.services.visualization_watcher.Desktop",
                 return_value=desktop,
             ),
             patch.object(
@@ -506,6 +571,10 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                 return_value=dialog_controls,
             ) as wait_for_dialog,
             patch.object(teamcenter_visualization, "_activate_window"),
+            patch.object(
+                teamcenter_visualization,
+                "_select_ribbon_tab",
+            ) as select_tab,
         ):
             result = teamcenter_visualization._trigger_open_dialog(
                 window,
@@ -514,8 +583,28 @@ class TeamcenterVisualizationTests(unittest.TestCase):
 
         self.assertEqual(result, dialog_controls)
         open_command.invoke.assert_called_once_with()
+        select_tab.assert_called_once_with(window_spec, "Assembly")
         native_window.type_keys.assert_not_called()
         wait_for_dialog.assert_called_once_with(native_window)
+
+    def test_select_ribbon_tab_ignores_workspace_tabs(self):
+        ribbon_tab = Mock()
+        ribbon_tab.window_text.return_value = "Assembly"
+        ribbon_tab.rectangle.return_value.top = 24
+        workspace_tab = Mock()
+        workspace_tab.window_text.return_value = "Assembly"
+        workspace_tab.rectangle.return_value.top = 210
+        window_spec = Mock()
+        window_spec.descendants.return_value = [workspace_tab, ribbon_tab]
+
+        selected = teamcenter_visualization._select_ribbon_tab(
+            window_spec,
+            "Assembly",
+        )
+
+        self.assertTrue(selected)
+        ribbon_tab.select.assert_called_once_with()
+        workspace_tab.select.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -223,7 +223,7 @@ source control. Registered JT uploads are stored separately in
 │       ├── config.py         # Server settings and runtime directories
 │       ├── start.py          # Waitress entry point
 │       ├── routes/           # Web, conversion, and Teamcenter Visualization endpoints
-│       ├── services/         # Conversion, JT inspection, and Teamcenter Visualization automation
+│       ├── services/         # Conversion, JT inspection, and visualization_watcher.py
 │       ├── utils/            # Upload validation and error handlers
 │       ├── static/
 │       │   ├── index.html    # Small frontend shell

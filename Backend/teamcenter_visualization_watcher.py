@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from app.services import teamcenter_visualization
+from app.services import visualization_watcher
 
 # Single-instance guard: a second watcher exits immediately
 _lock = socket.socket()
@@ -219,8 +219,8 @@ def watch(interval=0.5):
     last_handle = None
     while True:
         try:
-            window = teamcenter_visualization.find_visualization_window()
-            popup = teamcenter_visualization.active_popup(window) if window else None
+            window = visualization_watcher.find_visualization_window()
+            popup = visualization_watcher.active_popup(window) if window else None
             handle = popup[0] if popup else None
             if popup and handle != last_handle:
                 title = popup[2].strip().lower()

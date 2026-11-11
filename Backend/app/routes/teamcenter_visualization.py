@@ -5,7 +5,7 @@ import uuid
 from flask import Blueprint, current_app, jsonify
 from werkzeug.utils import secure_filename
 
-from ..services.teamcenter_visualization import open_file_in_visualization
+from ..services.visualization_watcher import open_file_in_visualization
 from ..utils.uploads import check_upload
 
 teamcenter_visualization_bp = Blueprint("teamcenter_visualization", __name__)

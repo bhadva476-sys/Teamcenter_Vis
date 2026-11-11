@@ -2,7 +2,7 @@
 """API endpoints for storing JT files and registering their metadata."""
 
 from pathlib import Path
-from app.services.teamcenter_visualization import (
+from app.services.visualization_watcher import (
     open_file_in_visualization
 )
 
