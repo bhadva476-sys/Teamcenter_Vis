@@ -1,0 +1,19 @@
+.app-shell { display: grid; min-height: 100vh; grid-template-columns: 248px minmax(0, 1fr); }
+    .sidebar { position: sticky; top: 0; display: flex; height: 100vh; flex-direction: column; padding: 25px 16px 18px; border-right: 1px solid var(--line); background: rgba(8, 13, 27, .88); }
+    .sidebar-brand { display: flex; align-items: center; gap: 11px; padding: 0 9px 25px; color: #f4f6ff; font-size: 17px; font-weight: 700; letter-spacing: -.035em; }
+    .sidebar-caption { margin: 5px 10px 10px; color: #7683a2; font-size: 9px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    .sidebar-nav { display: grid; gap: 5px; }
+    .sidebar-nav-button { display: flex; width: 100%; min-height: 43px; align-items: center; gap: 11px; padding: 0 11px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #9ba8c4; cursor: pointer; font-size: 12px; font-weight: 580; text-align: left; transition: color .16s ease, background .16s ease, border-color .16s ease; }
+    .sidebar-nav-button:hover { background: rgba(255, 255, 255, .035); color: #e6eafe; }
+    .sidebar-nav-button[aria-current="page"] { border-color: rgba(139, 123, 255, .2); background: rgba(139, 123, 255, .12); color: #c9c1ff; }
+    .sidebar-nav-button svg { flex: 0 0 auto; }
+    .sidebar-footer { margin-top: auto; padding: 12px 10px 0; border-top: 1px solid var(--line); color: #71809f; font-size: 10px; line-height: 1.55; }
+    .app-main { min-width: 0; padding: 0 32px 32px; }
+    .page-title { margin: 0; color: #e7ebfa; font-size: 14px; font-weight: 650; }
+    .page-view { display: none; }
+    .page-view.active { display: block; }
+    .topbar { height: 76px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .brand { display: inline-flex; align-items: center; gap: 11px; color: #f4f6ff; font-size: 17px; font-weight: 700; letter-spacing: -.035em; }
+    .brand-mark { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(167, 156, 255, .32); border-radius: 11px; background: linear-gradient(145deg, rgba(139, 123, 255, .25), rgba(61, 75, 138, .2)); color: var(--accent-bright); }
+    .topbar-note { color: var(--muted); font-size: 12px; letter-spacing: .02em; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 7fr) minmax(290px, 3fr); gap: 24px; min-height: calc(100vh - 109px); padding-top: 24px; }

@@ -7,13 +7,7 @@ from pathlib import Path
 
 from app.services import visualization_watcher
 
-# Single-instance guard: a second watcher exits immediately
-_lock = socket.socket()
-try:
-    _lock.bind(("127.0.0.1", 50998))
-except OSError:
-    print("Watcher already running.")
-    sys.exit(0)
+_lock = None
 
 BUSY_FLAG = Path(tempfile.gettempdir()) / "teamcenter_visualization_busy.flag"
 APP_TITLE = "JT Viewer"
@@ -140,19 +134,23 @@ def force_foreground(hwnd):
         if attached:
             user32.AttachThreadInput(my_tid, fg_tid, False)
 
-APP_EXE = Path(r"C:\Project\new\Backend\dist\JTViewer\JTViewer.exe")
+BACKEND_DIR = Path(__file__).resolve().parent
+APP_EXE = BACKEND_DIR / "dist" / "JTViewer" / "JTViewer.exe"
+APP_LOG = BACKEND_DIR / "desktop_app.log"
 
 def launch_or_focus():
     win = find_viewer_window()
     if win is None:
+        if not APP_EXE.is_file():
+            raise FileNotFoundError(f"JT Viewer executable was not found: {APP_EXE}")
         print("Launching JT Viewer...")
-        log = open(r"C:\Project\new\Backend\desktop_app.log", "ab")
-        subprocess.Popen(
-            [str(APP_EXE)],
-            cwd=str(APP_EXE.parent),
-            stdout=log,
-            stderr=log,
-        )
+        with APP_LOG.open("ab") as log:
+            subprocess.Popen(
+                [str(APP_EXE)],
+                cwd=str(APP_EXE.parent),
+                stdout=log,
+                stderr=log,
+            )
         deadline = time.monotonic() + 20
         while win is None and time.monotonic() < deadline:
             time.sleep(0.3)
@@ -214,6 +212,31 @@ def close_popup(handle):
     print("Could not close the Insert File dialog.")
 
 
+def handle_insert_dialog(handle):
+    if CLOSE_VISUALIZATION_DIALOG:
+        try:
+            close_popup(handle)
+        except Exception as error:
+            print("close failed:", error)
+
+    try:
+        launch_or_focus()
+    except Exception as error:
+        print("launch failed:", error)
+
+    try:
+        window = find_viewer_window()
+        if window is not None:
+            force_foreground(window.handle)
+    except Exception as error:
+        print("focus failed:", error)
+
+
+def should_handle_insert_dialog(title):
+    normalized = (title or "").strip().lower()
+    return normalized in INSERT_TITLES and not BUSY_FLAG.exists()
+
+
 def watch(interval=0.5):
     print("Watching Teamcenter Visualization... (Ctrl+C to stop)")
     last_handle = None
@@ -226,24 +249,10 @@ def watch(interval=0.5):
                 title = popup[2].strip().lower()
                 if title and title != "project workspace":
                     print(f"Teamcenter Visualization dialog appeared: {popup[2]!r}")
-                if title in INSERT_TITLES and not BUSY_FLAG.exists():
+                if should_handle_insert_dialog(title):
                     print("Insert detected, opening JT Viewer...")
                     last_handle = handle
-                    try:
-                        launch_or_focus()
-                    except Exception as error:
-                        print("launch failed:", error)
-                    if CLOSE_VISUALIZATION_DIALOG:
-                        try:
-                            close_popup(handle)
-                        except Exception as error:
-                            print("close failed:", error)
-                    try:
-                        w = find_viewer_window()
-                        if w is not None:
-                            force_foreground(w.handle)
-                    except Exception as error:
-                        print("focus failed:", error)
+                    handle_insert_dialog(handle)
                     continue
             last_handle = handle
         except Exception as error:
@@ -252,4 +261,11 @@ def watch(interval=0.5):
 
 
 if __name__ == "__main__":
+    # A second watcher exits immediately.
+    _lock = socket.socket()
+    try:
+        _lock.bind(("127.0.0.1", 50998))
+    except OSError:
+        print("Watcher already running.")
+        sys.exit(0)
     watch()

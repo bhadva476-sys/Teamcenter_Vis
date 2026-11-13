@@ -1,0 +1,3 @@
+* { box-sizing: border-box; }
+    body { min-width: 320px; min-height: 100vh; margin: 0; background: radial-gradient(ellipse at 15% 0%, #182143 0, #0b1020 48rem); }
+    button, input { font: inherit; }

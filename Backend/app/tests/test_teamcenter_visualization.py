@@ -7,6 +7,104 @@ from app.services import visualization_watcher as teamcenter_visualization
 
 
 class TeamcenterVisualizationTests(unittest.TestCase):
+    def test_my_files_open_uses_busy_flag_and_cleans_it_up(self):
+        with tempfile.TemporaryDirectory() as directory:
+            jt_file = Path(directory) / "assembly.jt"
+            jt_file.write_bytes(b"JT")
+            busy_flag = Path(directory) / "teamcenter_visualization_busy.flag"
+            window = Mock()
+            window.handle = 10
+            native_window = Mock()
+            dialog_controls = (Mock(), Mock(), Mock())
+
+            def trigger_open(*_args):
+                self.assertTrue(busy_flag.exists())
+                return dialog_controls
+
+            def submit_file(*_args):
+                self.assertTrue(busy_flag.exists())
+
+            with (
+                patch.object(
+                    teamcenter_visualization,
+                    "VISUALIZATION_BUSY_FLAG",
+                    busy_flag,
+                ),
+                patch.object(
+                    teamcenter_visualization,
+                    "find_visualization_window",
+                    return_value=window,
+                ),
+                patch(
+                    "app.services.visualization_watcher.Desktop",
+                    return_value=Mock(
+                        **{"window.return_value": native_window}
+                    ),
+                ),
+                patch.object(
+                    teamcenter_visualization,
+                    "_has_open_jt_model",
+                    return_value=False,
+                ),
+                patch.object(
+                    teamcenter_visualization,
+                    "_trigger_open_dialog",
+                    side_effect=trigger_open,
+                ),
+                patch.object(
+                    teamcenter_visualization,
+                    "_navigate_and_submit_file",
+                    side_effect=submit_file,
+                ),
+            ):
+                result = teamcenter_visualization.open_file_in_visualization(
+                    jt_file
+                )
+
+            self.assertTrue(result)
+            self.assertFalse(busy_flag.exists())
+
+    def test_my_files_open_cleans_busy_flag_when_automation_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            jt_file = Path(directory) / "assembly.jt"
+            jt_file.write_bytes(b"JT")
+            busy_flag = Path(directory) / "teamcenter_visualization_busy.flag"
+            window = Mock()
+            window.handle = 10
+
+            with (
+                patch.object(
+                    teamcenter_visualization,
+                    "VISUALIZATION_BUSY_FLAG",
+                    busy_flag,
+                ),
+                patch.object(
+                    teamcenter_visualization,
+                    "find_visualization_window",
+                    return_value=window,
+                ),
+                patch(
+                    "app.services.visualization_watcher.Desktop",
+                    return_value=Mock(),
+                ),
+                patch.object(
+                    teamcenter_visualization,
+                    "_has_open_jt_model",
+                    return_value=True,
+                ),
+                patch.object(
+                    teamcenter_visualization,
+                    "_trigger_insert_dialog",
+                    side_effect=RuntimeError("dialog failed"),
+                ),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "dialog failed"):
+                    teamcenter_visualization.open_file_in_visualization(
+                        jt_file
+                    )
+
+            self.assertFalse(busy_flag.exists())
+
     def test_open_jt_model_detection_accepts_titles_with_suffix_text(self):
         window = Mock()
         window.window_text.return_value = (
@@ -351,8 +449,10 @@ class TeamcenterVisualizationTests(unittest.TestCase):
     def test_wait_for_insert_dialog_accepts_insert_file_dialog(self):
         main_window = Mock()
         main_window.handle = 10
+        main_window.process_id.return_value = 42
         dialog_window = Mock()
         dialog_window.handle = 20
+        dialog_window.process_id.return_value = 42
         dialog_window.is_visible.return_value = True
         dialog_window.element_info.class_name = "#32770"
         dialog_window.window_text.return_value = "Insert File"
@@ -473,8 +573,8 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         main_window.handle = 10
         dialog = Mock()
         dialog.handle = 20
+        dialog.process_id.return_value = 42
         dialog.window_text.return_value = "Open"
-        dialog.process_id.return_value = 99
         dialog.is_visible.return_value = True
         dialog.element_info.class_name = "#32770"
         filename = Mock()
@@ -503,6 +603,41 @@ class TeamcenterVisualizationTests(unittest.TestCase):
             [call.kwargs["control_id"] for call in dialog.child_window.call_args_list],
             [3078, 1],
         )
+
+    def test_wait_for_open_dialog_ignores_other_app_dialogs(self):
+        main_window = Mock()
+        main_window.handle = 10
+        main_window.process_id.return_value = 42
+        other_app_dialog = Mock()
+        other_app_dialog.handle = 20
+        other_app_dialog.process_id.return_value = 99
+        other_app_dialog.is_visible.return_value = True
+        other_app_dialog.element_info.class_name = "#32770"
+        other_app_dialog.window_text.return_value = "Open"
+        desktop = Mock()
+        desktop.windows.return_value = [other_app_dialog]
+
+        with (
+            patch(
+                "app.services.visualization_watcher.Desktop",
+                return_value=desktop,
+            ),
+            patch(
+                "app.services.visualization_watcher.time.monotonic",
+                side_effect=(0, 100),
+            ),
+            patch("app.services.visualization_watcher.time.sleep"),
+        ):
+            with self.assertRaisesRegex(
+                TimeoutError,
+                "native Open file dialog did not appear",
+            ):
+                teamcenter_visualization._wait_for_open_dialog(
+                    main_window,
+                    timeout=1,
+                )
+
+        other_app_dialog.child_window.assert_not_called()
 
     def test_open_dialog_falls_back_to_file_menu(self):
         window = Mock()
@@ -583,7 +718,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
 
         self.assertEqual(result, dialog_controls)
         open_command.invoke.assert_called_once_with()
-        select_tab.assert_called_once_with(window_spec, "Assembly")
+        select_tab.assert_called_once_with(window_spec, "File")
         native_window.type_keys.assert_not_called()
         wait_for_dialog.assert_called_once_with(native_window)
 

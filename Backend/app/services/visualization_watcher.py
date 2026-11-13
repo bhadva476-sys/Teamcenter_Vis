@@ -1,5 +1,6 @@
 
 import os
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -9,6 +10,9 @@ from pywinauto import Desktop
 INSERT_SHORTCUT = "^+i"
 FILE_DIALOG_TITLES = {"open", "open file", "insert", "insert file"}
 VISUALIZATION_AUTOMATION_LOCK = threading.Lock()
+VISUALIZATION_BUSY_FLAG = (
+    Path(tempfile.gettempdir()) / "teamcenter_visualization_busy.flag"
+)
 
 VIS_EXE = Path(
     r"C:\Soft\Siemens\Visualization_mockup\Products\Mockup\VisView.exe"
@@ -157,6 +161,7 @@ def _wait_for_open_dialog(main_window, timeout=15):
             try:
                 if (
                     dialog_window.handle == main_window.handle
+                    or dialog_window.process_id() != main_window.process_id()
                     or not dialog_window.is_visible()
                     or dialog_window.element_info.class_name != "#32770"
                     or dialog_window.window_text().strip().casefold() != "open"
@@ -178,29 +183,25 @@ def _wait_for_open_dialog(main_window, timeout=15):
 
 
 def _trigger_open_dialog(window, native_window):
-    """Open Visualization's file picker through its ribbon Open command."""
+    """Open Visualization's file picker through its File tab or shortcuts."""
     native_window.restore()
     _activate_window(native_window.handle)
 
     window_spec = Desktop(backend="uia").window(handle=window.handle)
     errors = []
     try:
-        _select_ribbon_tab(window_spec, "Assembly")
+        _select_ribbon_tab(window_spec, "File")
     except Exception as error:
         errors.append(error)
 
-    try:
-        open_command = window_spec.child_window(
-            title="Open",
-            control_type="Button",
-        )
-        ribbon_open_exists = open_command.exists(timeout=2)
-    except Exception as error:
-        errors.append(error)
-        ribbon_open_exists = False
-
-    if ribbon_open_exists:
+    for control_type in ("Button", "MenuItem"):
         try:
+            open_command = window_spec.child_window(
+                title="Open",
+                control_type=control_type,
+            )
+            if not open_command.exists(timeout=1):
+                continue
             try:
                 open_command.invoke()
             except Exception:
@@ -208,6 +209,7 @@ def _trigger_open_dialog(window, native_window):
             return _wait_for_open_dialog(native_window)
         except Exception as error:
             errors.append(error)
+            break
 
     try:
         native_window.type_keys("^o")
@@ -255,6 +257,7 @@ def _wait_for_insert_dialog(main_window, timeout=15):
             try:
                 if (
                     dialog_window.handle == main_window.handle
+                    or dialog_window.process_id() != main_window.process_id()
                     or not dialog_window.is_visible()
                     or dialog_window.element_info.class_name != "#32770"
                     or dialog_window.window_text().strip().casefold()
@@ -398,39 +401,45 @@ def open_file_in_visualization(file_path, open_in_new_document=False):
         raise FileNotFoundError(f"Application not found: {VIS_EXE}")
 
     with VISUALIZATION_AUTOMATION_LOCK:
-        window = find_visualization_window()
-        if window is None:
-            try:
-                os.startfile(str(VIS_EXE))
-            except OSError as error:
-                raise RuntimeError(
-                    f"Windows could not start Teamcenter Visualization: {error}"
-                ) from error
-            deadline = time.monotonic() + 90
-            while window is None and time.monotonic() < deadline:
-                time.sleep(0.5)
-                window = find_visualization_window()
-        if window is None:
-            raise TimeoutError(
-                "Teamcenter Visualization did not open within 90 seconds."
-            )
+        VISUALIZATION_BUSY_FLAG.touch()
+        try:
+            window = find_visualization_window()
+            if window is None:
+                try:
+                    os.startfile(str(VIS_EXE))
+                except OSError as error:
+                    raise RuntimeError(
+                        f"Windows could not start Teamcenter Visualization: {error}"
+                    ) from error
+                deadline = time.monotonic() + 90
+                while window is None and time.monotonic() < deadline:
+                    time.sleep(0.5)
+                    window = find_visualization_window()
+            if window is None:
+                raise TimeoutError(
+                    "Teamcenter Visualization did not open within 90 seconds."
+                )
 
-        native_window = Desktop(backend="win32").window(handle=window.handle)
-        if not open_in_new_document and _has_open_jt_model(window):
-            dialog, filename, submit_button = _trigger_insert_dialog(
-                window,
-                native_window,
+            native_window = Desktop(backend="win32").window(
+                handle=window.handle
             )
-        else:
-            dialog, filename, submit_button = _trigger_open_dialog(
-                window,
-                native_window,
+            if not open_in_new_document and _has_open_jt_model(window):
+                dialog, filename, submit_button = _trigger_insert_dialog(
+                    window,
+                    native_window,
+                )
+            else:
+                dialog, filename, submit_button = _trigger_open_dialog(
+                    window,
+                    native_window,
+                )
+            _navigate_and_submit_file(
+                dialog,
+                submit_button,
+                file_path,
             )
-        _navigate_and_submit_file(
-            dialog,
-            submit_button,
-            file_path,
-        )
+        finally:
+            VISUALIZATION_BUSY_FLAG.unlink(missing_ok=True)
 
     print("JT file loaded in Teamcenter Visualization:", file_path)
     return True
