@@ -177,7 +177,6 @@ class TeamcenterVisualizationTests(unittest.TestCase):
             dialog = Mock()
             filename = Mock()
             open_button = Mock()
-            file_item = Mock()
             uia_desktop = Mock()
             uia_desktop.window.return_value = window
             win32_desktop = Mock()
@@ -207,9 +206,8 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                 ) as trigger_open,
                 patch.object(
                     teamcenter_visualization,
-                    "_navigate_to_file",
-                    return_value=file_item,
-                ) as navigate,
+                    "_navigate_and_submit_file",
+                ) as submit_file,
             ):
                 result = teamcenter_visualization.open_file_in_visualization(
                     jt_file
@@ -217,11 +215,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
 
         self.assertTrue(result)
         trigger_open.assert_called_once_with(window, native_window)
-        navigate.assert_called_once_with(dialog, jt_file, 15)
-        file_item.click_input.assert_called_once_with()
-        open_button.wait.assert_called_once_with("enabled", timeout=2)
-        open_button.click.assert_called_once_with()
-        dialog.wait_not.assert_called_once_with("visible", timeout=15)
+        submit_file.assert_called_once_with(dialog, open_button, jt_file)
 
     def test_open_inserts_file_into_existing_jt_model(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -329,19 +323,10 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         )
         trigger_insert.assert_not_called()
 
-    def test_upload_file_picker_navigates_to_its_folder_and_selects_file(self):
+    def test_upload_file_picker_selects_file_after_navigating_to_its_folder(self):
         target = Path("C:/uploads/session/model.jt")
-        filename = Mock()
         file_item = Mock()
-        file_item.text.return_value = target.name
-        file_list = Mock()
-        file_list.items.return_value = [file_item]
         dialog = Mock()
-        directory_control = Mock()
-        directory_control.element_info.control_id = 1003
-        directory_control.element_info.class_name = "ComboBox"
-        dialog.descendants.return_value = [directory_control]
-        dialog.child_window.return_value = file_list
         submit_button = Mock()
 
         with patch.object(
@@ -355,7 +340,7 @@ class TeamcenterVisualizationTests(unittest.TestCase):
                 target,
             )
 
-        navigate.assert_called_once_with(dialog, target, 15)
+        navigate.assert_called_once_with(dialog, target)
         file_item.click_input.assert_called_once_with()
         submit_button.wait.assert_called_once_with("enabled", timeout=2)
         submit_button.click.assert_called_once_with()
@@ -367,10 +352,13 @@ class TeamcenterVisualizationTests(unittest.TestCase):
         )
         dialog = Mock()
         my_computer = Mock()
+        list_view = Mock()
         filename_edit = Mock()
         open_button = Mock()
-        list_view = Mock()
-        list_view.item_count.return_value = 0
+        file_item = Mock()
+        file_item.text.return_value = target.name
+        list_view.item_count.return_value = 1
+        list_view.get_item.return_value = file_item
         controls = {
             1006: list_view,
             3070: my_computer,
@@ -378,32 +366,16 @@ class TeamcenterVisualizationTests(unittest.TestCase):
             1: open_button,
         }
         dialog.child_window.side_effect = lambda control_id: controls[control_id]
-        items = [Mock() for _ in range(6)]
 
-        with patch.object(
-            teamcenter_visualization,
-            "_wait_for_list_item",
-            side_effect=items,
-        ) as wait_for_item:
-            result = teamcenter_visualization._navigate_to_file(
-                dialog,
-                target,
-                timeout=15,
-            )
-        self.assertIs(result, items[-1])
+        result = teamcenter_visualization._navigate_to_file(dialog, target)
+
+        self.assertIs(result, file_item)
         my_computer.click.assert_called_once_with()
-        my_computer.click.assert_called_once_with()
-        filename_edit.set_edit_text.assert_any_call("C:\\")
-        for folder_name in target.parent.parts[1:]:
-            filename_edit.set_edit_text.assert_any_call(folder_name + "\\")
-        self.assertEqual(open_button.click.call_count, 6)
-        self.assertEqual(wait_for_item.call_count, 6)
-        wait_for_item.assert_any_call(
-            list_view,
-            "Project_Visualization",
-            15,
+        filename_edit.set_edit_text.assert_called_once_with(
+            str(target.parent.resolve()) + "\\"
         )
-        wait_for_item.assert_called_with(list_view, target.name, 15)
+        open_button.click.assert_called_once_with()
+        file_item.text.assert_called_once_with()
 
     def test_wait_for_file_list_item_uses_native_win32_list_view(self):
         list_view = Mock()

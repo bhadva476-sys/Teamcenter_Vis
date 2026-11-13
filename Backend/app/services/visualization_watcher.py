@@ -4,6 +4,10 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+import time
+from pathlib import Path
+
+from pywinauto.keyboard import send_keys
 
 from pywinauto import Desktop
 
@@ -349,50 +353,95 @@ def _wait_for_list_item(list_view, name, timeout, starts_with=False):
 
 
 def _navigate_to_file(dialog, file_path, timeout=15):
-    """Browse the legacy native picker using its folder-name edit control."""
+    """Browse the native file picker to the JT file's containing folder."""
     file_path = Path(file_path).resolve()
     if not file_path.drive:
         raise ValueError(f"JT file path must be absolute: {file_path}")
 
     list_view = dialog.child_window(control_id=1006)
-    filename_edit = dialog.child_window(control_id=3078)
-    open_button = dialog.child_window(control_id=1)
-
-    for index in range(list_view.item_count()):
-        item = list_view.get_item(index)
-        if item.text().strip().casefold() == file_path.name.casefold():
-            return item
 
     my_computer = dialog.child_window(control_id=3070)
     my_computer.click()
-    filename_edit.set_edit_text(file_path.drive + "\\")
-    open_button.click()
 
+    drive_item = _wait_for_list_item(
+        list_view,
+        file_path.drive,
+        timeout,
+        starts_with=True,
+    )
+    drive_item.click_input(double=True)
     folder_parts = file_path.parent.parts[1:]
     for folder_name in folder_parts:
-        _wait_for_list_item(list_view, folder_name, timeout)
-        filename_edit.set_edit_text(folder_name + "\\")
-        open_button.click()
+        folder_item = _wait_for_list_item(list_view, folder_name, timeout)
+        folder_item.click_input(double=True)
 
     return _wait_for_list_item(list_view, file_path.name, timeout)
 
 
-def _navigate_and_submit_file(
-    dialog,
-    submit_button,
-    file_path,
-    timeout=15,
-):
-    """Browse to the exact JT file and submit it in the native picker."""
-    file_item = _navigate_to_file(dialog, file_path, timeout)
-    file_item.click_input()
-    submit_button.wait("enabled", timeout=2)
-    submit_button.click()
-    dialog.wait_not("visible", timeout=15)
+def _read_edit(edit):
+    try:
+        return edit.window_text().strip()
+    except Exception:
+        return ""
 
 
+def _clear_edit(edit):
+    try:
+        edit.set_edit_text("")
+    except Exception:
+        pass
+    edit.click_input()
+    send_keys("{END}+{HOME}{DELETE}")
+    time.sleep(0.2)
+    for _ in range(5):
+        if not _read_edit(edit):
+            return True
+        send_keys("^a{BACKSPACE}")
+        time.sleep(0.15)
+    return not _read_edit(edit)
+
+
+def _set_path_once(edit, full_path):
+    safe = (full_path.replace("{", "{{}").replace("}", "{}}")
+                     .replace("+", "{+}").replace("^", "{^}")
+                     .replace("%", "{%}").replace("~", "{~}")
+                     .replace("(", "{(}").replace(")", "{)}"))
+    for _ in range(3):
+        if not _clear_edit(edit):
+            continue
+        send_keys(safe, with_spaces=True, pause=0.03)
+        time.sleep(0.5)
+        if _read_edit(edit).lower() == full_path.lower():
+            return True
+    return False
+
+
+def _navigate_and_submit_file(dialog, submit_button, file_path, timeout=20):
+    full_path = str(Path(file_path).resolve())
+
+    dlg = Desktop(backend="win32").window(handle=dialog.handle)
+    edit = dlg.child_window(class_name="Edit")
+    edit.wait("exists enabled visible", timeout=5)
+
+    dlg.set_focus()
+    time.sleep(1)   # Visualization ka auto-fill hone do
+
+    if not _set_path_once(edit, full_path):
+        raise RuntimeError(
+            f"File name box has wrong text: {_read_edit(edit)!r}"
+        )
+
+    send_keys("{ENTER}")
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not dlg.exists(timeout=0.2):
+            return
+        time.sleep(0.3)
+    raise TimeoutError(f"Dialog did not close after submitting {full_path}")
 def open_file_in_visualization(file_path, open_in_new_document=False):
     file_path = Path(file_path)
+    print(f"Resolved file path: {file_path}", flush=True)
 
     if not file_path.exists():
         raise FileNotFoundError(f"JT file not found: {file_path}")

@@ -235,6 +235,7 @@ def open_registered_jt_file(file_id):
         ).resolve()
 
         file_path = Path(stored_path).resolve(strict=True)
+        print(f"Resolved file path: {file_path}", flush=True)
         file_path.relative_to(upload_root)
 
     except (OSError, RuntimeError, TypeError, ValueError):
