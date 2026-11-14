@@ -358,3 +358,4 @@ WARNING:waitress.queue:Task queue depth is 2
 --> Listing JT upload records
 --> Debug Querying Table: `jtweb_client`
 --> Successfully fetched 1 records.
+[pywebview] Failed to delete user data folder: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\vboxuser\\AppData\\Local\\Temp\\tmpqtawgvhf\\EBWebView\\Default\\Network\\Cookies'

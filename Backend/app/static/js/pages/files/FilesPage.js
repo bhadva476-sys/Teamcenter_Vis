@@ -85,13 +85,17 @@ async function openInTeamcenterVisualization(file, button) {
 }
 
 async function downloadFile(file, button) {
-  alert(`Downloading ${file.filename}...`);
   button.disabled = true;
   const status = getElement('fileListStatus');
-  setStatus(status, `Downloading ${file.filename}...`);
+  setStatus(status, `Choose where to save ${file.filename}...`);
   try {
-    await downloadRegisteredFile(file.id);
-    setStatus(status, `${file.filename} downloaded.`);
+    const result = await downloadRegisteredFile(file.id, file.filename);
+    setStatus(
+      status,
+      result?.cancelled
+        ? `Download of ${file.filename} cancelled.`
+        : `${file.filename} downloaded.`
+    );
   } catch (error) {
     setStatus(status, getErrorMessage(error), true);
   } finally {

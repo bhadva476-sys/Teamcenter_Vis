@@ -28,26 +28,36 @@ export function openRegisteredFile(fileId) {
 //     headers: { Accept: 'application/json' }
 //   });
 // }
-export async function downloadRegisteredFile(fileId) {
-  const response = await fetch(`/api/jt-files/${fileId}/download`);
+export async function downloadRegisteredFile(fileId, filename) {
+  if (window.pywebview?.api?.download_file) {
+    return window.pywebview.api.download_file(fileId, filename);
+  }
 
+  const response = await fetch(
+    `${API_BASE}/api/jt-files/${encodeURIComponent(fileId)}/download`
+  );
   if (!response.ok) {
-    throw new Error('File download failed');
+    let message = 'File download failed.';
+    try {
+      const data = await response.json();
+      message = data.error || message;
+    } catch {
+      // Keep the generic error when the response is not JSON.
+    }
+    throw new Error(message);
   }
 
   const blob = await response.blob();
-
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-
   link.href = url;
-  link.download = 'downloaded-file.jt';
+  link.download = filename;
 
   document.body.appendChild(link);
   link.click();
   link.remove();
-
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { cancelled: false, filename };
 }
 
 export function convertJTFile(file) {
