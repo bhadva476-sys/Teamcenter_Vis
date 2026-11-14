@@ -359,3 +359,7 @@ WARNING:waitress.queue:Task queue depth is 2
 --> Debug Querying Table: `jtweb_client`
 --> Successfully fetched 1 records.
 [pywebview] Failed to delete user data folder: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\vboxuser\\AppData\\Local\\Temp\\tmpqtawgvhf\\EBWebView\\Default\\Network\\Cookies'
+ENV_FILE: C:\Project_Visualization\new\Backend\dist\JTViewer\config\.env.dev exists: False DB_USER: 'root'
+pyimod02_importers.py:457: FutureWarning: You are running 'comtypes' on Python 3.15, where the behavior of enum types (such as IntFlag) may differ from Python <= 3.14.
+It is recommended to use a version compatible with Python 3.15.
+See: https://github.com/enthought/comtypes/issues/894

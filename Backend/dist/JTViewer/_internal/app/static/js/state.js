@@ -4,5 +4,7 @@ export const appState = {
   filesLoaded: false,
   filesRequest: null,
   refreshQueued: false,
-  downloadUrl: null
+  downloadUrl: null,
+  downloadRequest: null,
+  
 };

@@ -24,6 +24,13 @@
     #file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
     #file:focus-visible + .file-picker { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
     #selectedFile { display: none; overflow: hidden; margin-top: 10px; color: #b8c1da; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .more-options { margin-top: 14px; color: #c5cce0; font-size: 11px; }
+    .more-options[hidden] { display: none; }
+    .more-options summary { width: fit-content; margin-bottom: 12px; color: #b9b0ff; cursor: pointer; font-weight: 650; }
+    #thumbnailFile { display: block; max-width: 100%; margin: 8px 0; color: #aab6d2; font: inherit; font-size: 10px; }
+    #thumbnailHint { display: block; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    #thumbnailSelection { margin: 7px 0; color: #aaf0d6; font-size: 10px; overflow-wrap: anywhere; }
+    #thumbnailPreview { display: block; max-width: 100%; max-height: 140px; margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; object-fit: contain; }
     .actions { display: grid; gap: 10px; margin-top: 20px; }
     .divider { height: 1px; margin: 22px 0 16px; background: var(--line); }
     #status { min-height: 34px; margin: 0; color: #a5b0ca; font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
@@ -55,12 +62,31 @@
     #uploadedFilesTable tbody tr:hover { background: rgba(139, 123, 255, .055); }
     .file-id { color: #8996b5 !important; font-variant-numeric: tabular-nums; }
     .file-name-cell { max-width: 420px; overflow: hidden; font-weight: 600; text-overflow: ellipsis; }
+    .file-thumbnail-cell { width: 84px; }
+    .file-thumbnail { display: block; width: 64px; height: 48px; border: 1px solid var(--line); border-radius: 6px; background: rgba(7, 12, 25, .55); object-fit: contain; }
     .file-path-cell { max-width: 480px; overflow: hidden; color: #9ca9c6 !important; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; text-overflow: ellipsis; }
     .file-type-badge { display: inline-flex; align-items: center; padding: 4px 7px; border: 1px solid rgba(139, 123, 255, .2); border-radius: 6px; background: rgba(139, 123, 255, .08); color: #b9b0ff; font-size: 10px; font-weight: 700; }
     .file-size-cell { font-variant-numeric: tabular-nums; }
     .file-owner-cell { color: #aab6d2 !important; }
-    .jt2go-button { min-height: 32px; padding: 0 10px; border: 1px solid rgba(139, 123, 255, .32); border-radius: 8px; background: rgba(139, 123, 255, .1); color: #c9c1ff; cursor: pointer; font-size: 10px; font-weight: 650; }
-    .jt2go-button:hover { border-color: rgba(167, 156, 255, .62); background: rgba(139, 123, 255, .18); }
-    .jt2go-button:disabled { cursor: wait; opacity: .6; }
+    .teamcenter-visualization-button { min-height: 32px; padding: 0 10px; border: 1px solid rgba(139, 123, 255, .32); border-radius: 8px; background: rgba(139, 123, 255, .1); color: #c9c1ff; cursor: pointer; font-size: 10px; font-weight: 650; }
+    .teamcenter-visualization-button:hover { border-color: rgba(167, 156, 255, .62); background: rgba(139, 123, 255, .18); }
+    .teamcenter-visualization-button:disabled { cursor: wait; opacity: .6; }
     #fileListStatus { min-height: 18px; margin: 0 0 10px; color: var(--muted); font-size: 11px; }
     #fileListStatus.error { color: #ff8e9b; }
+.btn-download {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.btn-download:hover {
+  background: #1d4ed8;
+}
+
+.btn-download:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

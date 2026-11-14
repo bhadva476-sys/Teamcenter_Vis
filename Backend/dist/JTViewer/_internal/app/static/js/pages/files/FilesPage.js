@@ -1,6 +1,7 @@
 import {
   fetchUploadedFiles,
-  openRegisteredFile
+  openRegisteredFile,
+  downloadRegisteredFile
 } from '../../common/services/api.js';
 import { createFileRow } from '../../common/components/DataTable.js';
 import { setStatus } from '../../common/components/StatusMessage.js';
@@ -29,7 +30,9 @@ function getVisibleFiles() {
       file.file_location,
       file.type,
       file.size,
-      file.attribute_owner
+      file.attribute_owner,
+      file.download_url
+      
     ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))),
     query
   };
@@ -41,7 +44,9 @@ function renderFiles() {
   const body = getElement('uploadedFilesBody');
   const rows = document.createDocumentFragment();
   filteredFiles.forEach(file => {
-    rows.appendChild(createFileRow(file, activeView, openInJT2Go));
+    rows.appendChild(
+      createFileRow(file, activeView, openInTeamcenterVisualization, downloadFile)
+    );
   });
   body.replaceChildren(rows);
 
@@ -65,13 +70,32 @@ function renderFiles() {
   }
 }
 
-async function openInJT2Go(file, button) {
+async function openInTeamcenterVisualization(file, button) {
   button.disabled = true;
   const status = getElement('fileListStatus');
-  setStatus(status, `Opening ${file.filename} in JT2Go...`);
+  setStatus(status, `Opening ${file.filename} in Teamcenter Visualization...`);
   try {
     await openRegisteredFile(file.id);
-    setStatus(status, `${file.filename} opened in JT2Go.`);
+    setStatus(status, `${file.filename} opened in Teamcenter Visualization.`);
+  } catch (error) {
+    setStatus(status, getErrorMessage(error), true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function downloadFile(file, button) {
+  button.disabled = true;
+  const status = getElement('fileListStatus');
+  setStatus(status, `Choose where to save ${file.filename}...`);
+  try {
+    const result = await downloadRegisteredFile(file.id, file.filename);
+    setStatus(
+      status,
+      result?.cancelled
+        ? `Download of ${file.filename} cancelled.`
+        : `${file.filename} downloaded.`
+    );
   } catch (error) {
     setStatus(status, getErrorMessage(error), true);
   } finally {
@@ -221,7 +245,7 @@ export function setFilesView(view) {
   const page = getElement('filesPage');
   page.classList.toggle('active', view !== 'upload');
   getElement('uploadPage').classList.toggle('active', view === 'upload');
-  getElement('jt2goActionHeader').hidden = view !== 'mine';
+  getElement('teamcenterVisualizationActionHeader').hidden = view !== 'mine';
   getElement('uploadedFilesTitle').textContent = view === 'mine' ? 'My Files' : 'All Files';
   getElement('filesSubtitle').textContent = view === 'mine'
     ? 'Files tagged local-user (authentication is not enabled)'
@@ -230,6 +254,7 @@ export function setFilesView(view) {
     ? 'Search your files by name, path, type or ID...'
     : 'Search filename, path, owner, type or ID...';
   renderFiles();
+   
 }
 
 

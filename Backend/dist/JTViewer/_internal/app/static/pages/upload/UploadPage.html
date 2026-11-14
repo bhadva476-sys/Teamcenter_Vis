@@ -24,7 +24,7 @@
       <aside class="control-panel" aria-labelledby="actionsTitle">
         <p class="eyebrow">Workspace</p>
         <h2 id="actionsTitle">File actions</h2>
-        <p class="panel-copy">Choose a JT model to preview, register it on the server, open it in JT2Go, or download the original file.</p>
+        <p class="panel-copy">Choose a JT model to preview, register it on the server, open it in Teamcenter Visualization, or download the original file.</p>
 
         <span class="field-label">JT model file</span>
         <label for="file" class="file-picker">
@@ -37,6 +37,18 @@
         </label>
         <div id="selectedFile" aria-live="polite"></div>
 
+        <details id="moreOptions" class="more-options" hidden>
+          <summary>More options</summary>
+          <label for="thumbnailFile" class="field-label">Choose thumbnail</label>
+          <input id="thumbnailFile" type="file"
+                 accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+          <small id="thumbnailHint">
+            A thumbnail is required when a preview is available.
+          </small>
+          <p id="thumbnailSelection" role="status" aria-live="polite"></p>
+          <img id="thumbnailPreview" alt="Selected thumbnail preview" hidden>
+        </details>
+
         <div class="actions">
           <button id="registerBtn" class="action-button" type="button">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -48,7 +60,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M12 5v14m-7-7h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
             </svg>
-            Add to JT2Go
+            Open in Teamcenter Visualization
           </button>
           <a id="downloadBtn" class="action-button" href="#" download>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">

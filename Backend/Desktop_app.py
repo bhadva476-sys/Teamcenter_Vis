@@ -1,3 +1,4 @@
+import ctypes
 import os
 import shutil
 import tempfile
@@ -17,106 +18,96 @@ from app.config import HOST, PORT
 flask_app = create_app()
 
 
-class DesktopApi:
-    def __init__(self):
-        self.window = None
+def local_host():
+    return "127.0.0.1" if HOST in ("", "0.0.0.0", "::") else HOST
 
-    
-def download_file(self, file_id, filename):
+
+APP_URL = f"http://{local_host()}:{PORT}/"
+
+# Works on pywebview 4.x and 5.x
+SAVE_DIALOG = getattr(getattr(webview, "FileDialog", None), "SAVE", None) or webview.SAVE_DIALOG
+
+
+def download_file(file_id, filename):
     print("download_file called:", file_id, filename, flush=True)
 
     try:
         file_id = int(file_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Invalid JT file ID.") from error
+        if file_id < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        return {"success": False, "error": "Invalid JT file ID."}
 
-    if file_id < 1:
-        raise ValueError("Invalid JT file ID.")
-
-    filename = secure_filename(
-        Path(str(filename).replace("\\", "/")).name
-    )
-
+    filename = secure_filename(Path(str(filename).replace("\\", "/")).name)
     if not filename or Path(filename).suffix.lower() != ".jt":
-        raise ValueError("A valid JT filename is required.")
+        return {"success": False, "error": "A valid JT filename is required."}
 
-    # Direct Windows Downloads folder
-    downloads_folder = Path(r"C:\Users\Ashwin\Downloads")
-    downloads_folder.mkdir(parents=True, exist_ok=True)
-
-    destination = downloads_folder / filename
-
-    # Build Flask download API URL
-    server_host = HOST
-
-    if server_host in ("", "0.0.0.0", "::"):
-        server_host = "127.0.0.1"
-    elif ":" in server_host and not server_host.startswith("["):
-        server_host = f"[{server_host}]"
-
-    download_url = (
-        f"http://{server_host}:{PORT}/api/jt-files/{file_id}/download"
+    # 1. Ask the user where to save
+    selected = webview.windows[0].create_file_dialog(
+        SAVE_DIALOG,
+        directory=str(Path.home() / "Downloads"),  # starting folder only
+        save_filename=filename,
+        file_types=("JT files (*.jt)", "All files (*.*)"),
     )
+    if not selected:
+        return {"success": False, "cancelled": True}
 
+    save_path = selected[0] if isinstance(selected, (list, tuple)) else selected
+    destination = Path(save_path)
+    if destination.suffix.lower() != ".jt":
+        destination = destination.with_suffix(".jt")
+
+    # 2. Download from the local Flask server into a .part file, then rename
+    download_url = f"http://{local_host()}:{PORT}/api/jt-files/{file_id}/download"
     temporary_path = None
-
     try:
         print("[DOWNLOAD] Requesting:", download_url, flush=True)
-
         with urllib.request.urlopen(download_url, timeout=60) as response:
-
             with tempfile.NamedTemporaryFile(
                 mode="wb",
-                dir=downloads_folder,
+                dir=destination.parent,
                 prefix=f".{destination.name}.",
                 suffix=".part",
                 delete=False,
             ) as output:
-
                 temporary_path = Path(output.name)
                 shutil.copyfileobj(response, output)
 
-        # Move completed download to final destination
         os.replace(temporary_path, destination)
+        temporary_path = None  # renamed, nothing left to clean up
 
-        print("[DOWNLOAD] SUCCESS", flush=True)
-        print("[DOWNLOAD] Saved:", destination, flush=True)
-        print("[DOWNLOAD] Size:", destination.stat().st_size, flush=True)
-
+        size = destination.stat().st_size
+        print("[DOWNLOAD] Saved:", destination, size, flush=True)
         return {
             "success": True,
             "cancelled": False,
             "filename": destination.name,
             "file_path": str(destination),
-            "size": destination.stat().st_size
+            "size": size,
         }
 
     except urllib.error.HTTPError as error:
-        raise RuntimeError(
-            f"Download failed. HTTP status: {error.code}"
-        ) from error
-
+        return {"success": False, "error": f"Download failed. HTTP status: {error.code}"}
     except Exception as error:
-        print("[DOWNLOAD ERROR]", str(error), flush=True)
-        raise
-
+        print("[DOWNLOAD ERROR]", error, flush=True)
+        return {"success": False, "error": str(error)}
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
 
 
 def run_server():
-    serve(flask_app, host=HOST, port=PORT)
+    serve(flask_app, host=HOST, port=PORT, threads=16)
 
 
 def server_is_up():
     try:
-        urllib.request.urlopen(f"http://{HOST}:{PORT}/health", timeout=1)
+        urllib.request.urlopen(f"http://{local_host()}:{PORT}/health", timeout=1)
         return True
     except urllib.error.HTTPError:
-        return True      # server chal raha hai, bas page ne error diya
+        return True
     except Exception:
-        return False     # server abhi start nahi hua
+        return False
 
 
 def wait_until_ready(timeout=20):
@@ -128,15 +119,15 @@ def wait_until_ready(timeout=20):
 
 
 if __name__ == "__main__":
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("JTViewer.Desktop")
+    except Exception:
+        pass
+
     if not server_is_up():
         threading.Thread(target=run_server, daemon=True).start()
         wait_until_ready()
-    desktop_api = DesktopApi()
-    desktop_api.window = webview.create_window(
-        "JT Viewer",
-        f"http://{HOST}:{PORT}/",
-        width=1280,
-        height=800,
-        js_api=desktop_api,
-    )
-    webview.start()
+
+    window = webview.create_window("JT Viewer", APP_URL, width=1280, height=800)
+    window.expose(download_file)
+    webview.start(gui="edgechromium")
